@@ -37,7 +37,7 @@ Here it's:
 
 ## Workflow
 
-1. **Run the regression model** to obtain beta coefficients. You may input either a `phyloseq` object or an OTU table + metadata. The model accepts standard training parameters. It is recommended to run the regression twice while changing the first OTU in the OTU table, since the first OTU is removed from analysis due to identifiability constraints. \
+1. **Run the regression model** to obtain beta coefficients. You may input either a `phyloseq` object or an OTU table + metadata. The model accepts standard training parameters. It is recommended to run the regression twice while changing the first OTU in the OTU table, since the first OTU is removed from analysis due to being zeroed in the additive log ratio calculation. The beta coefficients do not change based on the reference used here, but the removed OTU may be significantly differential in the rankings. 
 
 ```r
 run_songbird(
@@ -53,7 +53,7 @@ run_songbird(
 )
 ```
 
-2. **Make a rank plot** to visualize which OTUs have the largest absolute beta coefficients and are therefore most likely differential. You can also highlight OTUs of interest to check their position in the ranking. \
+2. **Make a rank plot** to visualize which OTUs have the largest absolute beta coefficients and are therefore most likely differential. You can also highlight OTUs of interest to check their position in the ranking. Middle-most OTUs have the lowest absolute beta coefficients and are the most stable, therefore, may serve as a reference when calculating log ratios.
 
 ```r
 plot_songbird_ranks(
@@ -66,7 +66,7 @@ plot_songbird_ranks(
 )
 ```
 
-3. **Select a stable OTU** as the reference for log-ratio testing based on its stability (low absolute coefficient) and prevalence in samples. This OTU will be used as the denominator. \
+3. **Select a stable OTU** as the reference for log-ratio testing based on its stability (low absolute coefficient) and prevalence in samples. 
 
 ```r
 extract_middle_otus(
@@ -76,7 +76,7 @@ extract_middle_otus(
 )
 ```
 
-4. **Model proportions using BMDD** to impute zeros and calculate log-ratios of each OTU to the chosen reference. The output is a log-ratio matrix with an added condition column for group labels. \
+4. **Model proportions using BMDD** to impute zeros and calculate log-ratios of each OTU to the chosen reference. The output is a log-ratio matrix with an added condition column for group labels for further significance testing.
 
 ```r
 logratio_from_bmdd(
@@ -87,7 +87,7 @@ logratio_from_bmdd(
 )
 ```
 
-5. **Run a statistical test** (either Wilcoxon or t-test) to compare log-ratios of each OTU between the specified conditions. Output includes test statistics, p-values, and FDR-adjusted values. \
+5. **Run a statistical test** (either Wilcoxon or t-test) to compare log-ratios of each OTU between the specified conditions. Output includes test statistics, p-values, and FDR-adjusted values. 
 
 ```r
 logratio_stat_test(
