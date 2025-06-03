@@ -24,7 +24,7 @@ You will need to create a conda environment via Anaconda prompt. The environment
 - tensorflow-probability 0.23.0  
 - numpy 1.26.4  
 
-You will have to activate the environment in R via:
+You will have to activate the environment in R via: \
 `use_condaenv("environment", required = TRUE)`
 
 An example workflow is provided in:  
