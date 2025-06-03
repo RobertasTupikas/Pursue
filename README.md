@@ -7,6 +7,13 @@ https://doi.org/10.1038/s41467-019-10656-5
 You can install this package via: \
 devtools::install_github("RobertasTupikas/songbird-for-R")
 
+You will need to create a conda environment via Anaconda prompt. The environment has to contain the following: \
+tensorflow 2.14.0 \
+tensorflow-probability 0.23.0 \
+numpy 1.26.4 \
+
+You will have to activate the environment in R via use_condaenv("environment", required = TRUE)
+
 An example workflow is provided in: \
 songtest.R
 
