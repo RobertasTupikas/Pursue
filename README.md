@@ -35,10 +35,64 @@ The data used is from the teeth brushing examples in the original publication by
 Here it's:  
 `physeq.RDS`
 
-## Workflow:
+## Workflow
 
-1. Run the regression model to obtain beta coefficients. Input either a phyloseq object or OTU table + metadata, while specifying which covariate(s) to model in the formula. Also specify model training parameters. You may run the regression 2 times while changing the first OTU in the OTU table, as it is removed from the analysis. The beta coefficients do not change based on this reference OTU, but it is worth checking whether you have not removed a potentially differential OTU.  
-2. Make a rank plot, which ranks OTUs based on their beta coefficients. The ones with the highest absolute beta coefficients (on the sides of the plot) are changing the most, while those with the lowest absolute beta coefficients are the most stable (middle of the plot). You may also highlight a OTU of interest to see where it stands in the ranking. Use the plot to identify potentially differential OTUs and a reference OTU  
-3. Select a stable OTU as the reference in the log-ratio calculation based on its stability and prevalence in samples.  
-4. Using BMDD, model the proportions of all OTUs, efectively imputing zeros. Use the proportions to calculate the log ratios of all OTUs to a specified reference and insert a covariate column that shows which group they belong to (discrete variable).  
-5. Run a statistical test (T-test or Wilcoxon test) to compare log ratios of a particular OTU between conditions.  
+1. **Run the regression model** to obtain beta coefficients. You may input either a `phyloseq` object or an OTU table + metadata. The model accepts standard training parameters. It is recommended to run the regression twice while changing the first OTU in the OTU table, since the first OTU is removed from analysis due to identifiability constraints. \
+
+```r
+run_songbird(
+  physeq = my_phyloseq,        # or specify otu_table and metadata instead
+  formula = "~ brushing_event",
+  differential_prior = 1.0,
+  learning_rate = 0.001,
+  clipnorm = 10.0,
+  batch_size = 5,
+  seed = 0,
+  num_test_samples = 5,
+  epochs = 9000
+)
+```
+
+2. **Make a rank plot** to visualize which OTUs have the largest absolute beta coefficients and are therefore most likely differential. You can also highlight OTUs of interest to check their position in the ranking. \
+
+```r
+plot_songbird_ranks(
+  beta_clr = betas,
+  coef_name = "brushing_eventbefore",
+  highlight_otus = c("Haemophilus", "Actinomyces"),
+  ylim_range = c(-3, 3),
+  xlab = "OTUs",
+  ylab = "CLR Beta Coefficient"
+)
+```
+
+3. **Select a stable OTU** as the reference for log-ratio testing based on its stability (low absolute coefficient) and prevalence in samples. This OTU will be used as the denominator. \
+
+```r
+extract_middle_otus(
+  beta_mat = betas,
+  otu_table = otu_table, 
+  covariate = "brushing_eventbefore"
+)
+```
+
+4. **Model proportions using BMDD** to impute zeros and calculate log-ratios of each OTU to the chosen reference. The output is a log-ratio matrix with an added condition column for group labels. \
+
+```r
+logratio_from_bmdd(
+  otu_table = otu_table,
+  metadata = metadata,
+  condition_col = "brushing_event",
+  ref_otu = "41f67443ce8207be0c0a956c47823417"
+)
+```
+
+5. **Run a statistical test** (either Wilcoxon or t-test) to compare log-ratios of each OTU between the specified conditions. Output includes test statistics, p-values, and FDR-adjusted values. \
+
+```r
+logratio_stat_test(
+  logratio_df = ratios,
+  condition_col = "brushing_event",
+  test = "t"  # or "wilcox"
+)
+```
