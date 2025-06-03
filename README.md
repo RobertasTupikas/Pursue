@@ -4,6 +4,17 @@ Reimplementation of the songbird algorithm by Morton et. al. (2019) in R with ad
 Original publication:\
 https://doi.org/10.1038/s41467-019-10656-5
 
+Original repository for the python version:\
+https://github.com/biocore/songbird
+
+Songbird is a differential microbial abundance analysis method that uses a regression model to calculate beta coefficients for each OTU with one or more covariates in mind. These beta coefficients are then ranked from lowes to highest, with OTUs having the highest absolute (irrespective of sign) being considered differential, and those with the lowest absolute beta coefficients are considered stable. This ranking mainly serves as additional motivation to select a particular reference and to scout potentially differential OTUs. Significance testing is then done by calculating log ratios with a particular reference as the denominator and a t-test or regression model is used to test whether the log ratios differ between conditions (discrete variable) or are associated with a continuous variable. To remedy the effect of zeros on log ratio calculation, Bimodal Dirichlet distribution (BMDD) is introduced into the workflow of Songbird in order to model proportions and impute missing zeros.
+
+Bimodal Dirichlet distribution: \
+https://doi.org/10.1101/2025.05.08.652808
+
+Repository: \
+https://github.com/zhouhj1994/BMDD
+
 You can install this package via: \
 devtools::install_github("RobertasTupikas/songbird-for-R")
 
