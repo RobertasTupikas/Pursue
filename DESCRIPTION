@@ -1,0 +1,26 @@
+Package: songbirdR
+Title: Microbial Differential Abundance Analysis via Differential Ranking and Log-Ratio Testing
+Version: 0.1.0
+Authors@R: 
+    person("Robert", "Tupikas", , "robertast.tupikas@gmail.com", role = c("aut", "cre"))
+Description:
+    Implements microbial differential abundance analysis based on the Songbird framework
+    by Morton et al.(2019) in R. This includes reimplementation of multinomial regression for 
+    differential ranking using TensorFlow via R, as well as extensions for zero handling and 
+    log-ratio hypothesis testing. Addtional functionalities include rank plotting with select
+    OTUs and semi-automatic reference frame selection.
+License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
+    license
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Depends: 
+    R (>= 4.1.0)
+Imports:
+    tensorflow,
+    reticulate,
+    phyloseq,
+    BMDD,
+    ggplot2,
+    dplyr,
+    stats
