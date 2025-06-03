@@ -41,12 +41,31 @@ epochs = 9000               # number of training epochs
 
 betasnoref <- betas[-1, ]
 
+#Renaming OTUs by taxon dictionary from songbird data (not necessary if your OTUs are named properly)
+name_map <- c(
+  "51121722488d0c3da1388d1b117cd239" = "Haemophilus",
+  "f6eb8537456dde7792eff60c8d1e797c" = "Haemophilus",
+  "2cb16f19a154ae6de38df817b7ab8523" = "Haemophilus",
+  "9e15e76a487328cc4fe9a0f2a48eb146" = "Haemophilus",
+  "6dee9ad8019d7a6a17aef3ffdc75a287" = "Actinomyces",
+  "76355427db027e5ec9f4404f906613a1" = "Actinomyces",
+  "f58ef02fd3fe4f8f1c8ba13a3e205697" = "Actinomyces",
+  "1b050f719c047f60bba533c3ba98bfd8" = "Actinomyces",
+  "05c2d251996b17582af0cba08f500211" = "Actinomyces",
+  "13f5aba07d66b4d4f6a20ccd480a3836" = "Actinomyces",
+  "1dbf2096a837bcbda19f144fb527c499" = "Actinomyces",
+  "8f0ba2d0c4a91f9303ab9e1b48d9f92b" = "Actinomyces"
+)
+
+rownames(betasnoref) <- ifelse(rownames(betasnoref) %in% names(name_map),
+                               name_map[rownames(betasnoref)],
+                               rownames(betasnoref))
+
 # Plot the results
 
 plot_songbird_ranks(betasnoref,                                       # matrix of betas from run_songbird
                     "brushing_eventbefore",                           # covariate by which to rank OTUs
-                    highlight_otus = c("51121722488d0c3da1388d1b117cd239",
-                                       "6dee9ad8019d7a6a17aef3ffdc75a287"), # OTUs to highlight
+                    highlight_otus = c("Haemophilus", "Actinomyces"), # OTUs to highlight (from the name_map)
                     ylim_range = c(-3, 3),                            # y-axis limits
                     xlab = "OTUs",                                    # x-axis label
                     ylab = "CLR Beta Coefficient")                    # y-axis label
