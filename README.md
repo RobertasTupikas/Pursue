@@ -70,7 +70,7 @@ library(plotly)
 
 ## Workflow
 
-Below is a step-by-step guide to using the **Shiny interface** that comes with `songbird-for-R`.
+Below is a step-by-step guide to using the **Shiny interface** that comes with `songbird-for-R`. Steps 8 and 9 can be run independently without running regression or the rank plot prior if you know which variables and features you want to use. 
 
 ### 1) Load Conda environment
 - In the **Model Settings** tab (left panel).
@@ -142,6 +142,6 @@ The model parameters you can set in the interface:
 - You’ll see a progress message; when finished, the app prints **Numerator OTUs** and **Denominator OTUs** selected by SELBAL.
 - Copy these into the **log‑ratio inputs** above to visualize and compute statistics.
 
-**Performance note:** SELBAL is compute‑heavier than the regression; in practice it can be ~**6× slower** when the regression runs on **4 cores**.
+**Performance note:** Regression with an otu table of 32x204 at 9000 epochs, 100 bootstraps and 4 cores runs around 5 minutes. SELBAL is compute‑heavier than the regression; in practice (5 folds and 10 iterations) it can be ~**6× slower** when the regression runs on **4 cores**.
 
 ---
