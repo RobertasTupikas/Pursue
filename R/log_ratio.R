@@ -1,60 +1,46 @@
-#' Compute log-ratios using BMDD against a reference OTU
+#' Compute Log‑Ratios (Geometric‑Mean, BMDD‑imputed)
 #'
-#' This function fits BMDD to the input OTU table, computes log-ratios
-#' of each OTU against a specified reference OTU, and returns the log-ratio
-#' matrix (excluding the reference OTU), with an added column for the condition.
+#' Performs Bayesian‑multiplicative zero imputation via \code{BMDD}
+#' and computes per‑sample log‑ratios between the geometric means of
+#' selected numerator and denominator OTUs.
 #'
-#' @param otu_table A matrix or data.frame with OTUs as rows and samples as columns.
-#' @param metadata A data.frame with samples as rows and metadata columns.
-#' @param condition_col Character string specifying the column in metadata with group labels.
-#' @param ref_otu Character string specifying the name of the reference OTU.
-#' @return A data.frame of log-ratios of all OTUs to a reference OTU (removed), with an added column for the condition.
+#' @param otu_table  Matrix or data.frame of raw counts
+#'                   (samples in rows, taxa in columns).
+#' @param numerator  Character vector of OTU IDs for the numerator.
+#' @param denominator Character vector of OTU IDs for the denominator.
+#'
+#' @return data.frame with one column \code{logratio}; row names are sample IDs.
 #' @export
-logratio_from_bmdd <- function(otu_table, metadata, condition_col, ref_otu) {
-  if (!requireNamespace("BMDD", quietly = TRUE)) {
-    stop("Package 'BMDD' must be installed.")
-  }
+#'
+#' @examples
+#' logratios <- compute_logratios_gm(bmmd_otu,
+#'                                   c("OTU1", "OTU2"),
+#'                                   c("OTU3"))
+compute_logratios <- function(otu_table,
+                                 numerator,
+                                 denominator) {
 
-  # Transpose OTU table to samples x taxa if needed
-  if (nrow(otu_table) > ncol(otu_table)) {
-    warning("Transposing OTU table: expected OTUs as columns and samples as rows.")
-    otu_table <- t(otu_table)
-  }
+  if (is.null(dim(otu_table)))
+    stop("otu_table must be a matrix or data.frame")
 
-  otu_table <- as.data.frame(otu_table)
-  if (!all(rownames(metadata) %in% rownames(otu_table))) {
-    stop("Sample names in metadata must match those in OTU table.")
-  }
+  if (!requireNamespace("BMDD", quietly = TRUE))
+    stop("Package 'BMDD' must be installed for zero imputation")
 
-  # Reorder to match
-  metadata <- metadata[rownames(otu_table), , drop = FALSE]
+  bmdd.fit <- BMDD::bmdd(W = as.matrix(otu_table), type = "count")
+  otu_imp  <- bmdd.fit$beta
+  rownames(otu_imp) <- rownames(otu_table)
+  colnames(otu_imp) <- colnames(otu_table)
 
-  # Run BMDD
-  bmdd_fit <- BMDD::bmdd(W = t(otu_table), type = 'count')  # BMDD expects OTU x sample
-  beta <- bmdd_fit$beta  # OTUs x samples
+  num_mat <- otu_imp[, colnames(otu_imp) %in% numerator,   drop = FALSE]
+  den_mat <- otu_imp[, colnames(otu_imp) %in% denominator, drop = FALSE]
 
-  # Check reference OTU presence in posterior
-  if (!ref_otu %in% rownames(beta)) {
-    stop("Reference OTU not found in BMDD posterior output. It may have been dropped due to zero counts.")
-  }
+  if (ncol(num_mat) == 0)  stop("No valid numerator OTUs in table.")
+  if (ncol(den_mat) == 0)  stop("No valid denominator OTUs in table.")
 
-  # Normalize to proportions per sample
-  prop_bmdd <- t(apply(beta, 2, function(x) x / sum(x)))  # samples x OTUs
-  colnames(prop_bmdd) <- rownames(beta)  # OTU names
-  rownames(prop_bmdd) <- colnames(beta)  # sample names
+  num_log <- rowMeans(log(num_mat))
+  den_log <- rowMeans(log(den_mat))
+  logratio <- num_log - den_log
 
-  if (any(prop_bmdd[, ref_otu] == 0)) {
-    stop("Reference OTU has zero values in posterior proportions.")
-  }
-
-  # Correct log-ratio calculation (row-wise division)
-  ref_vec <- prop_bmdd[, ref_otu]
-  logratios <- log(sweep(prop_bmdd, 1, ref_vec, "/"))
-  logratios <- logratios[, colnames(logratios) != ref_otu, drop = FALSE]
-
-  # Add condition column
-  logratios_df <- as.data.frame(logratios)
-  logratios_df[[condition_col]] <- metadata[[condition_col]]
-
-  return(logratios_df)
+  data.frame(logratio = logratio,
+             row.names = rownames(otu_imp))
 }
