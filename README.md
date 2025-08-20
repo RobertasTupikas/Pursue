@@ -1,6 +1,6 @@
 # songbird-for-R 
 
-Reimplementation of the Songbird algorithm by Morton et al. (2019) in R with additional functionalities and a **point-and-click Shiny interface**.
+Reimplementation of the Songbird algorithm by Morton et al. (2019) in R with additional functionalities and a point-and-click Shiny interface.
 
 Original publication:  
 https://doi.org/10.1038/s41467-019-10656-5
