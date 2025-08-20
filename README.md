@@ -1,4 +1,4 @@
-# songbird-for-R — Shiny App Workflow
+# songbird-for-R 
 
 Reimplementation of the Songbird algorithm by Morton et al. (2019) in R with additional functionalities and a **point-and-click Shiny interface**.
 
