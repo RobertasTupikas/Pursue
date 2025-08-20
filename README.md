@@ -70,7 +70,7 @@ library(plotly)
 
 ## Workflow
 
-Below is a step-by-step guide to using the **Shiny interface** that comes with `songbird-for-R`. It assumes you have installed the packages and launched the app as described above.
+Below is a step-by-step guide to using the **Shiny interface** that comes with `songbird-for-R`.
 
 ### 1) Load Conda environment
 - In the **Model Settings** tab (left panel).
