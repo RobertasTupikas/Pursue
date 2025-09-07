@@ -3,6 +3,7 @@ library(songbirdR)
 library(shinyjs)
 library(DT)
 library(plotly)
+library(tensorflow) 
 
 
 ui <- fluidPage(
@@ -20,6 +21,12 @@ ui <- fluidPage(
                                     fileInput("otu_table", "Upload OTU Table (CSV)", accept = ".csv"),
                                     fileInput("metadata", "Upload Metadata (CSV)", accept = ".csv"),
                                     uiOutput("formula_ui"),
+                                    checkboxInput("use_cluster", "Clustered resampling", value = FALSE),
+                                    conditionalPanel(
+                                      condition = "input.use_cluster == true",
+                                      uiOutput("cluster_var_ui")
+                                    ),
+                                    uiOutput("random_effects_ui"),
                                     tags$small("Note: Categorical variables should be encoded as character or factor in your metadata. Numeric values like 1/2/3 will be treated as continuous unless converted. Delete variables with backspace"),
                                     uiOutput("reference_ui"),
                                     fluidRow(
@@ -28,18 +35,29 @@ ui <- fluidPage(
                                              numericInput("clipnorm", "Clipnorm", value = 10),
                                              numericInput("seed", "Random Seed", value = 0),
                                              numericInput("epochs", "Training Epochs", value = 1000),
+                                             selectInput("parallel_mode", "Parallel mode",
+                                                         choices = c("auto","no","multicore","snow"),
+                                                         selected = "auto"),
                                              numericInput("n_cores", "Number of Cores", value = 1)
                                       ),
                                       column(6,
                                              numericInput("learning_rate", "Learning Rate", value = 0.001),
                                              numericInput("batch_size", "Batch Size", value = 5),
                                              numericInput("num_test_samples", "Number of Test Samples", value = 5),
-                                             numericInput("n_bootstrap", "Number of Bootstraps", value = 10),
-                                             checkboxInput("use_gpu", "Use GPU", value = FALSE)
+                                             numericInput("n_boot", "Number of Bootstraps", value = 10)
                                       )
                                     ),
+                                    actionButton("choose_tb_dir", "Choose TensorBoard log directory"),
+                                    div(style="margin-top:6px"),
+                                    textOutput("tb_dir_text"),
+                                    
+                                    
                                     actionButton("run_model", "Run Regression"),
-                                    htmlOutput("regression_message_ui")
+                                    htmlOutput("regression_message_ui"),
+                                    
+                                    div(style="margin-top:6px"),
+                                    actionButton("open_tb", "Open TensorBoard"),
+                                    tags$hr(),
                                 )
                        ),#rank plot settings
                        tabPanel("Plot Settings",
@@ -110,6 +128,9 @@ ui <- fluidPage(
 
 
 server <- function(input, output, session) {
+  
+  `%||%` <- function(x, y) if (is.null(x) || length(x) == 0) y else x
+
   #status and result containers
   betas_result        <- reactiveVal(NULL)
   metadata_data       <- reactiveVal(NULL)
@@ -117,6 +138,7 @@ server <- function(input, output, session) {
   env_status          <- reactiveVal("")
   logratio_status     <- reactiveVal("")
   selbal_status       <- reactiveVal("")
+  tb_dir              <- reactiveVal("")
   logratios_result    <- reactiveVal(NULL)    
   selbal_result_text  <- reactiveVal(NULL)     
   
@@ -136,6 +158,25 @@ server <- function(input, output, session) {
                    choices  = names(metadata_data()),
                    selected = names(metadata_data())[1],
                    multiple = TRUE)
+  })
+  output$cluster_var_ui <- renderUI({
+    req(metadata_data())
+    selectInput("cluster_var", "Cluster (bootstrap block) variable",
+                choices = names(metadata_data()),
+                selected = names(metadata_data())[1],
+                multiple = FALSE)
+  })
+  # Random effects (batch/subject) variable picker
+  output$random_effects_ui <- renderUI({
+    req(metadata_data())
+    selectizeInput(
+      "random_effects_vars",
+      "Random effects (batch/subject) variables",
+      choices  = names(metadata_data()),
+      selected = NULL,            # start empty (checkbox can auto-fill)
+      multiple = TRUE,
+      options = list(placeholder = 'Select one or more (e.g., Batch)')
+    )
   })
   
   output$reference_ui <- renderUI({
@@ -176,57 +217,86 @@ server <- function(input, output, session) {
   output$regression_message_ui <- renderUI({ HTML(regression_status()) })
   
   observeEvent(input$run_model, {
-    #show status
+    # show status
     regression_status("<span style='color: orange; font-style: italic;'>Running regression...</span>")
     
-    
     req(input$otu_table, input$metadata)
-    otu_path   <- input$otu_table$datapath
-    meta_path  <- input$metadata$datapath
-    form_terms <- input$formula %||% character(0)   
-    diff_prior <- input$differential_prior
-    lr         <- input$learning_rate
-    clipnorm   <- input$clipnorm
-    bsz        <- input$batch_size
-    seed       <- input$seed
-    ntest      <- input$num_test_samples
-    epochs     <- input$epochs
-    nboot      <- input$n_bootstrap
-    ncores     <- input$n_cores
-    use_gpu    <- input$use_gpu
+    otu_path     <- input$otu_table$datapath
+    meta_path    <- input$metadata$datapath
+    form_terms   <- input$formula %||% character(0)
+    diff_prior   <- input$differential_prior
+    lr           <- input$learning_rate
+    clipnorm     <- input$clipnorm
+    bsz          <- input$batch_size
+    seed         <- input$seed
+    ntest        <- input$num_test_samples
+    epochs       <- input$epochs
+    nboot        <- input$n_boot
+    ncores       <- input$n_cores
+    cluster_var  <- input$cluster_var
+    parallel_sel <- input$parallel_mode %||% "auto"
     
-    #capture reference levels if present
+    # resampling mode
+    resample_mode <- if (isTRUE(input$use_cluster)) "cluster" else "row"
+    if (resample_mode == "cluster") req(cluster_var)
+    
+    # capture reference levels if present (fixed effects only)
     ref_levels <- NULL
     if (length(form_terms)) {
-      ref_levels <- lapply(form_terms, function(var){
-        input[[paste0("ref_", var)]]
-      })
+      ref_levels <- lapply(form_terms, function(var) input[[paste0("ref_", var)]])
       names(ref_levels) <- form_terms
     }
     
+    # RANDOM EFFECTS as CHARACTER VECTOR (not a formula)
+    re_vars_raw <- input$random_effects_vars %||% character(0)
+    re_vars_raw <- re_vars_raw[nzchar(re_vars_raw)]
+    random_effects_param <- if (length(re_vars_raw)) re_vars_raw else NULL
+    
+    # ---- capture TensorBoard dir OUTSIDE reactive context ----
+    tb_path <- isolate(tb_dir())   # <- plain string now
+    # ---------------------------------------------------------
     
     later::later(function() {
       tryCatch({
         otu_table <- read.csv(otu_path,  row.names = 1, check.names = FALSE)
         metadata  <- read.csv(meta_path, row.names = 1)
         
+        # align rows by sample ids (robust)
+        if (!all(rownames(otu_table) %in% rownames(metadata)) ||
+            !all(rownames(metadata) %in% rownames(otu_table))) {
+          common <- intersect(rownames(otu_table), rownames(metadata))
+          otu_table <- otu_table[common, , drop = FALSE]
+          metadata  <- metadata [common, , drop = FALSE]
+        }
+        stopifnot(all(rownames(otu_table) == rownames(metadata)))
         
+        # apply reference levels to fixed-effect variables
         if (length(form_terms)) {
           for (var in form_terms) {
             lvl <- ref_levels[[var]]
             if (!is.null(lvl)) {
-              metadata[[var]] <- factor(metadata[[var]],
-                                        levels = c(lvl, setdiff(unique(metadata[[var]]), lvl)))
+              metadata[[var]] <- factor(
+                metadata[[var]],
+                levels = c(lvl, setdiff(unique(metadata[[var]]), lvl))
+              )
             }
           }
         }
         
-        formula_string <- if (length(form_terms)) paste("~", paste(form_terms, collapse = "+")) else "~ 1"
+        # build FIXED-EFFECTS formula object
+        formula_obj <- if (length(form_terms)) {
+          as.formula(paste("~", paste(form_terms, collapse = "+")))
+        } else {
+          as.formula("~ 1")
+        }
         
-        betas <- run_songbird(
-          otu_table = otu_table,
-          metadata  = metadata,
-          formula   = formula_string,
+        betas <- run_regression(
+          otu_table        = otu_table,
+          metadata         = metadata,
+          formula          = formula_obj,
+          cluster_var      = if (resample_mode == "cluster") cluster_var else NULL,
+          random_effects   = random_effects_param,
+          reference_levels = ref_levels,
           differential_prior = diff_prior,
           learning_rate      = lr,
           clipnorm           = clipnorm,
@@ -234,9 +304,12 @@ server <- function(input, output, session) {
           seed               = seed,
           num_test_samples   = ntest,
           epochs             = epochs,
-          n_bootstrap        = nboot,
+          n_boot             = nboot,
           n_cores            = ncores,
-          use_gpu            = use_gpu
+          parallel           = parallel_sel,
+          re_lambda          = 1e-3,
+          resample           = resample_mode,
+          tb_logdir          = if (nzchar(tb_path)) tb_path else NULL  # <- use captured string
         )
         
         betas_result(betas)
@@ -247,8 +320,41 @@ server <- function(input, output, session) {
           e$message, "</span>"
         ))
       })
-    }, delay = 0.05) 
+    }, delay = 0.05)
   })
+  
+  
+  
+  observeEvent(input$choose_tb_dir, {
+    # Native folder dialog (no shinyFiles)
+    path <- tryCatch({
+      if (.Platform$OS.type == "windows") {
+        utils::choose.dir(caption = "Select TensorBoard log directory")
+      } else {
+        if (!requireNamespace("tcltk", quietly = TRUE)) stop("Package 'tcltk' is required on non-Windows for folder selection.")
+        tcltk::tk_choose.dir(caption = "Select TensorBoard log directory")
+      }
+    }, error = function(e) NA_character_)
+    
+    if (!is.na(path) && nzchar(path)) {
+      tb_dir(normalizePath(path, winslash = "/"))
+    }
+  })
+  
+  output$tb_dir_text <- renderText({
+    p <- tb_dir()
+    if (nzchar(p)) paste("Logdir:", p) else "Logdir: (none – TensorBoard logging disabled)"
+  })
+  
+  observeEvent(input$open_tb, {
+    req(nzchar(tb_dir()))
+    tryCatch({
+      tensorflow::tensorboard(tb_dir())   # opens TB in browser
+    }, error = function(e) {
+      showNotification(paste("Failed to open TensorBoard:", e$message), type = "error")
+    })
+  })
+  
   
   
   #rank plot
