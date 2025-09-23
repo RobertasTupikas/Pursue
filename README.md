@@ -1,5 +1,6 @@
-# songbird-for-R 
+# Pursue
 
+Microbiome Profiling Using ARL Regression with resample-Supported Uncertainty Estimation
 Reimplementation of the Songbird algorithm by Morton et al. (2019) in R with additional functionalities and a point-and-click Shiny interface.
 
 Original publication:  
