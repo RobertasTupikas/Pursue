@@ -1,5 +1,5 @@
-Package: songbirdR
-Title: Differential Microbial Abundance Analysis via Multinomial Regression and BMDD Imputation
+Package: Pursue
+Title: Differential Microbial Abundance Analysis via Multinomial Regression
 Version: 0.1.0
 Authors@R: 
     person("RobertT", "Tupikas", email = "robertast.tupikas@gmail.com", role = c("aut", "cre"))
@@ -23,5 +23,6 @@ Imports:
     stats,
     utils
 RoxygenNote: 7.3.2
-BugReports: https://github.com/RobertasTupikas/songbird-for-R/issues
-URL: https://github.com/RobertasTupikas/songbird-for-R
+BugReports: https://github.com/RobertasTupikas/Pursue/issues
+URL: https://github.com/RobertasTupikas/Pursue
+
