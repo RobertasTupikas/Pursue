@@ -750,3 +750,7 @@ server <- function(input, output, session) {
 
 
 shinyApp(ui = ui, server = server)
+
+
+#TODO - move plot function to a separate file
+#     - maybe add live epoch diagnostics for serial mode
