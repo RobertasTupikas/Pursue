@@ -28,16 +28,16 @@ run_single_model <- function(trainX, trainY,
                              re_info            = NULL,
                              re_lambda          = 1e-3,
                              early_stopping     = TRUE,
-                             patience           = 2,
+                             patience           = 20,
                              min_epochs         = 200,
-                             eval_every         = 1000,
+                             eval_every         = 100,
                              tol                = 1e-4,
                              lr_decay_on_plateau= TRUE,
                              lr_decay_factor    = 0.5,
                              lr_min             = 1e-6,
                              verbose            = FALSE,
                              tb_logdir          = NULL,
-                             print_prefix       = "") {
+                             seed = 0) {
 
   suppressPackageStartupMessages(library(tensorflow))
   tf$compat$v1$disable_eager_execution()
@@ -45,6 +45,7 @@ run_single_model <- function(trainX, trainY,
   tfd <- tfp$distributions
 
   tf$compat$v1$reset_default_graph()
+  tf$compat$v1$set_random_seed(as.integer(seed))
 
   # TF Placeholders
   X   <- tf$compat$v1$placeholder(tf$float32, shape(NULL, ncol(trainX)))
@@ -60,7 +61,7 @@ run_single_model <- function(trainX, trainY,
     ), name = "qbeta"
   )
 
-  # Linear predictor (K-1), then expand to K with a zero column
+  # Linear predictor, then expand to K with a zero column
   eta       <- tf$matmul(X, qbeta)
   zero_col  <- tf$zeros(shape = c(tf$shape(eta)[1], 1L), dtype = tf$float32)
   eta_full  <- tf$concat(list(zero_col, eta), axis = 1L)
@@ -104,7 +105,7 @@ run_single_model <- function(trainX, trainY,
   log_likelihood <- tf$reduce_sum(likelihood$log_prob(Y))
 
   # Loss formulation
-  loss <- -(log_prior + log_likelihood * (nrow(trainX) / 5))
+  loss <- -(log_prior + log_likelihood * (nrow(trainX) / batch_size))
   if (length(re_contribs) > 0) loss <- loss + re_penalty
 
   # Optimizer
@@ -123,6 +124,7 @@ run_single_model <- function(trainX, trainY,
 
   # Session initialization
   sess <- tf$compat$v1$Session()
+  on.exit(sess$close(), add = TRUE)
   sess$run(tf$compat$v1$global_variables_initializer())
 
   # TensorBoard setup
@@ -208,24 +210,21 @@ run_single_model <- function(trainX, trainY,
       if (verbose) {
         cur_lr <- sess$run(lr_var)
         cat(sprintf(
-          "%s%s epoch %d | train=%.6f | val=%s | best=%s | lr=%.3g%s\n",
-          if (nchar(print_prefix)) paste0(print_prefix, " | ") else "",
-          "regression",
-          step,
-          tr_loss,
+          "regression epoch %d | train=%.6f | val=%s | best=%s | lr=%.3g%s\n",
+          step, tr_loss,
           if (is.na(va_loss)) "NA" else sprintf("%.6f", va_loss),
           if (is.infinite(best_val)) "Inf" else sprintf("%.6f", best_val),
           cur_lr,
           if (improved) " *" else ""
         ))
+
         flush.console()
       }
 
       if (early_stopping && has_val && step >= min_epochs && no_improve >= patience) {
         steps_used <- step
         if (verbose) {
-          cat(sprintf("%sEarly stopping at epoch %d (no improvement in %d evaluations)\n",
-                      if (nchar(print_prefix)) paste0(print_prefix, " | ") else "",
+          cat(sprintf("Early stopping at epoch %d (no improvement in %d evaluations)\n",
                       step, no_improve))
           flush.console()
         }
@@ -236,7 +235,6 @@ run_single_model <- function(trainX, trainY,
     steps_used <- step
   }
 
-  # Final TensorBoard close
   if (use_tb) writer$close()
 
   # Restore best weights if ever improved
@@ -247,52 +245,50 @@ run_single_model <- function(trainX, trainY,
     }
   }
 
-  # Extract coefficients and convert
+  # Single model beta output
   final_beta <- sess$run(qbeta)
-  clr_inv <- function(x) { expx <- exp(x); expx / rowSums(expx) }
-  clr     <- function(x) { logx <- log(x); sweep(logx, 1, rowMeans(logx)) }
   beta_clr <- clr(clr_inv(cbind(0, final_beta)))
 
-  # Return taxa x coefs matrix
   t(beta_clr)
 }
 
 
 
-#' Data handling and passing regression models for bootstrapping
+#' Data handling and passing regression models for bootstrapping and permutations
 #' @keywords internal
 #' @export
 
 run_regression <- function(physeq = NULL,
-                                       otu_table = NULL,
-                                       metadata  = NULL,
-                                       formula,
-                                       random_effects    = NULL,
-                                       reference_levels  = NULL,
-                                       resample = c("cluster","row"),
-                                       cluster_var = NULL,
-                                       differential_prior = 1,
-                                       learning_rate      = 1e-3,
-                                       clipnorm           = 10,
-                                       batch_size         = 5,
-                                       seed               = 0,
-                                       num_test_samples   = 5,
-                                       epochs             = 1000,
-                                       n_boot             = 100,
-                                       n_cores            = 1,
-                                       parallel           = c("auto","no","multicore","snow"),
-                                       re_lambda          = 1e-3,
-                                       early_stopping     = TRUE,
-                                       patience           = 20,
-                                       min_epochs         = 200,
-                                       eval_every         = 10,
-                                       tol                = 1e-4,
-                                       lr_decay_on_plateau= TRUE,
-                                       lr_decay_factor    = 0.5,
-                                       lr_min             = 1e-6,
-                                       verbose            = FALSE,
-                                       tb_logdir          = NULL,
-                                       print_prefix       = "") {
+                           otu_table = NULL,
+                           metadata  = NULL,
+                           formula,
+                           random_effects    = NULL,
+                           reference_levels  = NULL,
+                           resample = c("cluster","row"),
+                           cluster_var = NULL,
+                           differential_prior = 1,
+                           learning_rate      = 1e-3,
+                           clipnorm           = 10,
+                           batch_size         = 5,
+                           seed               = 0,
+                           num_test_samples   = 5,
+                           epochs             = 1000,
+                           n_boot             = 0,
+                           n_perms            = 0,
+                           n_cores            = 1,
+                           parallel           = c("no","multicore","snow"),
+                           re_lambda          = 1e-3,
+                           early_stopping     = TRUE,
+                           patience           = 20,
+                           min_epochs         = 200,
+                           eval_every         = 10,
+                           tol                = 1e-4,
+                           lr_decay_on_plateau= TRUE,
+                           lr_decay_factor    = 0.5,
+                           lr_min             = 1e-6,
+                           verbose            = FALSE,
+                           tb_logdir          = NULL
+) {
 
   suppressPackageStartupMessages(library(boot))
 
@@ -315,14 +311,14 @@ run_regression <- function(physeq = NULL,
     }
   }
 
-  # Fixed-effects design and dims
+  # Fixed-effects design
   design <- model.matrix(as.formula(formula), metadata)
   K <- ncol(otu_mat)
   P <- ncol(design)
   taxa_names <- colnames(otu_mat)
   coef_names <- colnames(design)
 
-  # Random-effects variables
+  # Random/batch effect
   re_vars <- character(0)
   if (!is.null(random_effects)) {
     if (inherits(random_effects, "formula")) {
@@ -335,13 +331,35 @@ run_regression <- function(physeq = NULL,
     re_vars <- unique(re_vars)
   }
 
+  # Full fit if boots = 0
+  if (n_boot <= 0) {
+    re_info_full_for_fullfit <- if (length(re_vars) > 0) lapply(re_vars, function(v) {
+      fac_all <- base::addNA(factor(metadata[[v]]), ifany = TRUE)
+      lvl_idx <- as.integer(fac_all); if (anyNA(lvl_idx)) lvl_idx[is.na(lvl_idx)] <- nlevels(fac_all)
+      list(name = v, n_levels = as.integer(nlevels(fac_all)), idx0 = as.integer(lvl_idx - 1L))
+    }) else NULL
+    if (!is.null(re_info_full_for_fullfit)) names(re_info_full_for_fullfit) <- re_vars
 
-  # Choose boot parallel mode
-  parallel <- match.arg(parallel)
-
-  if (parallel == "auto") {
-    parallel <- if (.Platform$OS.type == "windows") "snow" else if (n_cores > 1) "multicore" else "no"
+    full_fit <- run_single_model(
+      design, otu_mat,
+      design[0,,drop=FALSE], otu_mat[0,,drop=FALSE],
+      differential_prior, learning_rate, clipnorm, batch_size, epochs,
+      re_info = re_info_full_for_fullfit, re_lambda = re_lambda,
+      early_stopping      = early_stopping,
+      patience            = patience,
+      min_epochs          = min_epochs,
+      eval_every          = eval_every,
+      tol                 = tol,
+      lr_decay_on_plateau = lr_decay_on_plateau,
+      lr_decay_factor     = lr_decay_factor,
+      lr_min              = lr_min,
+      verbose             = FALSE,
+      tb_logdir           = NULL
+    )
+    t0_vec <- as.vector(if (is.matrix(full_fit)) full_fit else full_fit$beta_mean)
   }
+
+  parallel <- match.arg(parallel)
 
   resample <- match.arg(resample)
 
@@ -353,17 +371,25 @@ run_regression <- function(physeq = NULL,
     if (n_clusters < 2L) stop("Need ≥2 clusters for clustered resampling.")
   }
 
+  if (n_boot <= 0 && n_perms <= 0)
+    stop("At least one of n_boot or n_perms must be > 0.")
+
+  terms_obj   <- terms(as.formula(formula), data = metadata)
+  assign_vec  <- attr(design, "assign")
+  term_labels <- attr(terms_obj, "term.labels")
+
+  perm_cols <- which(assign_vec %in% seq_along(term_labels))
+
   boot_counter   <- 0L
   local_verbose  <- isTRUE(verbose) && parallel == "no"
-  base_prefix    <- if (nzchar(print_prefix)) print_prefix else "boot"
 
-  # Statistic function for bootstraps
+  # Statistic function for boots
   stat_fun <- function(data, indices) {
 
-    # follow bootstrap counter for diagnostics (only in serial mode)
+    # follow bootstrap counter for live diagnostics
     if (parallel == "no") { boot_counter <<- boot_counter + 1L; boot_id <- boot_counter } else { boot_id <- NA_integer_ }
 
-    # map resample indices -> row indices
+    # map resample indices
     keep_idx <- if (resample == "cluster") {
       picked <- cluster_ids[indices]
       unlist(lapply(picked, function(cl) which(clusters == cl)), use.names = FALSE)
@@ -375,7 +401,7 @@ run_regression <- function(physeq = NULL,
     trainX <- design[keep_idx, , drop = FALSE]
     trainY <- otu_mat[keep_idx, , drop = FALSE]
 
-    # RE info (built on full metadata, indexed by keep_idx)
+    # RE info
     re_info <- if (length(re_vars) > 0) lapply(re_vars, function(v) {
       fac_all <- base::addNA(factor(metadata[[v]]), ifany = TRUE)
       fac_sub <- factor(fac_all[keep_idx], levels = levels(fac_all))
@@ -387,7 +413,7 @@ run_regression <- function(physeq = NULL,
     # validation
     test_idx <- if (nrow(trainX) > 0) sample(seq_len(nrow(trainX)), min(num_test_samples, nrow(trainX))) else integer(0)
 
-    # per-replicate TensorBoard dir (serial only; requires run_songbird has tb_logdir in scope)
+    # per-replicate TensorBoard
     this_tb_dir <- if (parallel == "no" && !is.null(tb_logdir) && nzchar(tb_logdir))
       file.path(tb_logdir, sprintf("rep_%03d", boot_id)) else NULL
 
@@ -408,7 +434,6 @@ run_regression <- function(physeq = NULL,
         lr_decay_factor     = lr_decay_factor,
         lr_min              = lr_min,
         verbose             = local_verbose,
-        print_prefix        = if (local_verbose) sprintf("%s %d", base_prefix, boot_id) else "",
         tb_logdir           = this_tb_dir
       )
     } else {
@@ -427,7 +452,6 @@ run_regression <- function(physeq = NULL,
         lr_decay_factor     = lr_decay_factor,
         lr_min              = lr_min,
         verbose             = FALSE,
-        print_prefix        = "",
         tb_logdir           = NULL
       )
     }
@@ -440,52 +464,143 @@ run_regression <- function(physeq = NULL,
   boot_data <- if (resample == "cluster") seq_len(n_clusters) else seq_len(nrow(design))
 
   # Run bootstraps
-  set.seed(seed)
-  boot_out <- boot::boot(data = boot_data, statistic = stat_fun, R = n_boot,
-                         sim = "ordinary", parallel = parallel, ncpus = n_cores)
+  beta_array <- beta_sd <- NULL
+  boot_out   <- NULL
 
-  # Reassemble coefficient arrays/matrices from boot output
-  t0_vec <- boot_out$t0
-  t_mat  <- boot_out$t
+  if (n_boot > 0) {
+    set.seed(seed)
 
-  # If t0 wasn't computed (rare), fall back to mean of boots (but normally present)
-  if (length(t0_vec) != K*P) {
-    t0_vec <- colMeans(t_mat, na.rm = TRUE)
+    boot_out <- boot::boot(data = boot_data, statistic = stat_fun, R = n_boot,
+                           sim = "ordinary", parallel = parallel, ncpus = n_cores)
+
+    t0_vec_boot <- boot_out$t0
+    t_mat       <- boot_out$t
+    if (length(t0_vec_boot) == K*P) {
+      t0_vec <- t0_vec_boot
+    } else {
+      t0_vec <- colMeans(t_mat, na.rm = TRUE)
+    }
+
+    # Final output for boots
+    B <- nrow(t_mat)
+    beta_array <- array(NA_real_, dim = c(K, P, B),
+                        dimnames = list(taxa_names, coef_names, paste0("boot", seq_len(B))))
+    for (b in seq_len(B)) {
+      beta_array[ , , b] <- matrix(t_mat[b, ], nrow = K, ncol = P, byrow = FALSE,
+                                   dimnames = list(taxa_names, coef_names))
+    }
+
+    beta_mean <- matrix(t0_vec, nrow = K, ncol = P, byrow = FALSE,
+                        dimnames = list(taxa_names, coef_names))
+    beta_sd   <- apply(beta_array, c(1, 2), sd, na.rm = TRUE)
   }
 
-  # Final output
-  B <- nrow(t_mat)
-  beta_array <- array(NA_real_, dim = c(K, P, B),
-                      dimnames = list(taxa_names, coef_names, paste0("boot", seq_len(B))))
-  for (b in seq_len(B)) {
-    beta_array[ , , b] <- matrix(t_mat[b, ], nrow = K, ncol = P, byrow = FALSE,
-                                 dimnames = list(taxa_names, coef_names))
+  perm_out <- NULL
+  perm_mat <- NULL
+
+  if (n_perms > 0) {
+    if (length(perm_cols) == 0)
+      stop("No permutable predictors detected from the formula.")
+
+    set.seed(seed + 1L)
+
+    re_info_full <- if (length(re_vars) > 0) lapply(re_vars, function(v) {
+      fac_all <- base::addNA(factor(metadata[[v]]), ifany = TRUE)
+      lvl_idx <- as.integer(fac_all); if (anyNA(lvl_idx)) lvl_idx[is.na(lvl_idx)] <- nlevels(fac_all)
+      list(name = v, n_levels = as.integer(nlevels(fac_all)), idx0 = as.integer(lvl_idx - 1L))
+    }) else NULL
+    if (!is.null(re_info_full)) names(re_info_full) <- re_vars
+
+    perm_data <- list(
+      design  = design,
+      otu     = otu_mat,
+      re_info = re_info_full
+    )
+
+    # Statistic funct for perms
+    stat_fun_perm <- function(dat, i) {
+      fit <- run_single_model(
+        dat$design, dat$otu,
+        dat$design[0,,drop=FALSE], dat$otu[0,,drop=FALSE],
+        differential_prior, learning_rate, clipnorm, batch_size, epochs,
+        re_info = dat$re_info, re_lambda = re_lambda,
+        early_stopping      = early_stopping,
+        patience            = patience,
+        min_epochs          = min_epochs,
+        eval_every          = eval_every,
+        tol                 = tol,
+        lr_decay_on_plateau = lr_decay_on_plateau,
+        lr_decay_factor     = lr_decay_factor,
+        lr_min              = lr_min,
+        verbose             = FALSE,
+        tb_logdir           = NULL
+      )
+      as.vector(if (is.matrix(fit)) fit else fit$beta_mean)
+    }
+
+    ran_gen_perm <- function(dat, mle) {
+      idx <- sample.int(nrow(dat$design))
+      d2  <- dat
+      d2$design[, perm_cols] <- dat$design[idx, perm_cols, drop = FALSE]
+      d2
+    }
+
+    perm_out <- boot::boot(
+      data     = perm_data,
+      statistic= stat_fun_perm,
+      R        = n_perms,
+      sim      = "parametric",
+      ran.gen  = ran_gen_perm,
+      mle      = NULL,
+      parallel = parallel,
+      ncpus    = n_cores
+    )
+    perm_mat <- perm_out$t
   }
 
+  #Final output assembly
   beta_mean <- matrix(t0_vec, nrow = K, ncol = P, byrow = FALSE,
                       dimnames = list(taxa_names, coef_names))
-  beta_sd   <- apply(beta_array, c(1, 2), sd, na.rm = TRUE)
+
+  if (!is.null(beta_array)) {
+    beta_sd <- apply(beta_array, c(1, 2), sd, na.rm = TRUE)
+  } else {
+    beta_sd <- NULL
+  }
 
   beta_pval <- matrix(NA_real_, nrow = K, ncol = P,
                       dimnames = list(taxa_names, coef_names))
-  for (i in seq_len(K)) {
+  if (!is.null(perm_mat)) {
     for (j in seq_len(P)) {
-      boots <- beta_array[i, j, ]
-      t0    <- beta_mean[i, j]
-      mboot <- mean(boots, na.rm=TRUE)
-      obs_c <- t0 - mboot
-      B     <- sum(!is.na(boots))
-      beta_pval[i, j] <- (sum(abs(boots - mboot) >= abs(obs_c), na.rm=TRUE) + 1) / (B + 1)
+      obs_j  <- beta_mean[, j]
+      null_j <- perm_mat[, ((j-1)*K + 1):(j*K), drop = FALSE]
+      for (i in seq_len(K)) {
+        Tn <- null_j[, i]
+        B  <- sum(is.finite(Tn))
+        if (B > 0) beta_pval[i, j] <- (sum(abs(Tn) >= abs(obs_j[i]), na.rm = TRUE) + 1) / (B + 1)
+      }
     }
   }
 
+  beta_fdr <- matrix(p.adjust(as.vector(beta_pval), method = "BH"),
+                     nrow = K, ncol = P,
+                     dimnames = list(taxa_names, coef_names))
 
-  list(
+  out <- list(
     boot       = boot_out,
+    perm       = perm_out,
     beta_mean  = beta_mean,
-    beta_sd    = beta_sd,
+    beta_sd    = if (is.null(beta_array)) NULL else beta_sd,
     beta_pval  = beta_pval,
+    beta_fdr   = beta_fdr,
     beta_array = beta_array,
     dims       = list(K = K, P = P, taxa_names = taxa_names, coef_names = coef_names)
   )
+  return(out)
+
+
 }
+
+#TODO - split single model and boot functions into separate files
+#     - recheck RE math
+#     - comment every block
