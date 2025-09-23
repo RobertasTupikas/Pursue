@@ -1,6 +1,6 @@
 # Pursue
 
-Microbiome <ins><strong>P</strong></ins>rofiling <ins><strong>U</strong></ins>sing A<ins><strong>R</strong></ins>L <ins><strong>R</strong></ins>egression with resample-<ins><strong>S</strong></ins>upported <ins><strong>U</strong></ins>ncertainty <ins><strong>E</strong></ins>stimation
+Microbiome <ins><strong>P</strong></ins>rofiling <ins><strong>U</strong></ins>sing ALR <ins><strong>R</strong></ins>egression with resample-<ins><strong>S</strong></ins>upported <ins><strong>U</strong></ins>ncertainty <ins><strong>E</strong></ins>stimation
 
 Reimplementation of the Songbird algorithm by Morton et al. (2019) in R with additional functionalities and a point-and-click Shiny interface.
 
