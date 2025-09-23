@@ -31,20 +31,30 @@ ui <- fluidPage(
                                     uiOutput("reference_ui"),
                                     fluidRow(
                                       column(6,
-                                             numericInput("differential_prior", "Differential Prior", value = 1),
-                                             numericInput("clipnorm", "Clipnorm", value = 10),
+                                             numericInput("differential_prior", "Differential Prior", value = 1, min = 1e-3, step = 0.1),
+                                             numericInput("clipnorm", "Clipnorm", value = 10, min = 1, step = 1),
+                                             numericInput("re_lambda", "Random-effect λ (L2)", value = 1e-3, min = 1e-6, step = 1e-4),
+                                             numericInput("learning_rate", "Learning Rate", value = 0.001, min = 1e-8, step = 1e-4),
+                                             numericInput("batch_size", "Batch Size", value = 5, min = 1, step = 1),
+                                             numericInput("num_test_samples", "Number of Test Samples", value = 5, min = 1, step = 1),
                                              numericInput("seed", "Random Seed", value = 0),
-                                             numericInput("epochs", "Training Epochs", value = 1000),
                                              selectInput("parallel_mode", "Parallel mode",
-                                                         choices = c("auto","no","multicore","snow"),
-                                                         selected = "auto"),
-                                             numericInput("n_cores", "Number of Cores", value = 1)
+                                                         choices = c("no","multicore","snow"),
+                                                         selected = "no"),
+                                             numericInput("n_cores", "Number of Cores", value = 1, min = 1, step = 1)
                                       ),
                                       column(6,
-                                             numericInput("learning_rate", "Learning Rate", value = 0.001),
-                                             numericInput("batch_size", "Batch Size", value = 5),
-                                             numericInput("num_test_samples", "Number of Test Samples", value = 5),
-                                             numericInput("n_boot", "Number of Bootstraps", value = 10)
+                                             numericInput("epochs", "Max Epochs per Resample", value = 1000, min = 2, step = 1),
+                                             numericInput("n_boot", "Number of Bootstraps", value = 10, min = 0, step = 1),
+                                             numericInput("n_perms", "Number of Permutations", value = 10, min = 0, step = 1),
+                                             checkboxInput("early_stopping", "Early stopping", value = TRUE),
+                                             numericInput("patience", "Patience (evals)", value = 20, min = 1, step = 1),
+                                             numericInput("min_epochs", "Min epochs before stop", value = 200, min = 1, step = 1),
+                                             numericInput("eval_every", "Eval every N steps", value = 20, min = 1, step = 1),
+                                             numericInput("tol", "Improvement tolerance", value = 1e-4, step = 1e-5),
+                                             checkboxInput("lr_plateau", "LR decay on plateau", value = TRUE),
+                                             numericInput("lr_decay_factor", "LR decay factor", value = 0.5, min = 0.01, max = 1, step = 0.05),
+                                             numericInput("lr_min", "LR minimum", value = 1e-6, min = 1e-8, step = 1e-6)
                                       )
                                     ),
                                     actionButton("choose_tb_dir", "Choose TensorBoard log directory"),
@@ -79,7 +89,7 @@ ui <- fluidPage(
                            div(style = "height:280px; overflow-y:auto; border:1px solid #ccc; padding:5px; box-sizing:border-box;",
                                uiOutput("csv_browse_box")
                            ),
-                           selectInput("csv_type", "Select CSV Type to Browse", choices = c("beta_mean", "beta_sd", "beta_pval")),
+                           selectInput("csv_type", "Select CSV Type to Browse", choices = c("beta_mean", "beta_sd", "beta_pval", "beta_fdr")),
                            downloadButton("download_csv_dynamic", "Download CSV"),
                            downloadButton("download_rds", "Download whole RDS"),
                            div(style = "margin-top: 10px;",
@@ -235,26 +245,35 @@ server <- function(input, output, session) {
     ncores       <- input$n_cores
     cluster_var  <- input$cluster_var
     parallel_sel <- input$parallel_mode %||% "auto"
+    nperms       <- input$n_perms
+    re_lambda    <- input$re_lambda
+    early_stop   <- isTRUE(input$early_stopping)
+    pat          <- input$patience
+    min_ep       <- input$min_epochs
+    eval_every   <- input$eval_every
+    tol          <- input$tol
+    lr_plateau   <- isTRUE(input$lr_plateau)
+    lr_factor    <- input$lr_decay_factor
+    lr_minimum   <- input$lr_min
     
     # resampling mode
     resample_mode <- if (isTRUE(input$use_cluster)) "cluster" else "row"
     if (resample_mode == "cluster") req(cluster_var)
     
-    # capture reference levels if present (fixed effects only)
+    # capture reference levels if present 
     ref_levels <- NULL
     if (length(form_terms)) {
       ref_levels <- lapply(form_terms, function(var) input[[paste0("ref_", var)]])
       names(ref_levels) <- form_terms
     }
     
-    # RANDOM EFFECTS as CHARACTER VECTOR (not a formula)
+    # RE input
     re_vars_raw <- input$random_effects_vars %||% character(0)
     re_vars_raw <- re_vars_raw[nzchar(re_vars_raw)]
     random_effects_param <- if (length(re_vars_raw)) re_vars_raw else NULL
     
-    # ---- capture TensorBoard dir OUTSIDE reactive context ----
-    tb_path <- isolate(tb_dir())   # <- plain string now
-    # ---------------------------------------------------------
+    # capture TensorBoard dir
+    tb_path <- isolate(tb_dir())  
     
     later::later(function() {
       tryCatch({
@@ -283,7 +302,7 @@ server <- function(input, output, session) {
           }
         }
         
-        # build FIXED-EFFECTS formula object
+        # build fixed effect formula object
         formula_obj <- if (length(form_terms)) {
           as.formula(paste("~", paste(form_terms, collapse = "+")))
         } else {
@@ -305,12 +324,22 @@ server <- function(input, output, session) {
           num_test_samples   = ntest,
           epochs             = epochs,
           n_boot             = nboot,
+          n_perms            = nperms,        
           n_cores            = ncores,
           parallel           = parallel_sel,
-          re_lambda          = 1e-3,
+          re_lambda          = re_lambda,     
           resample           = resample_mode,
-          tb_logdir          = if (nzchar(tb_path)) tb_path else NULL  # <- use captured string
+          early_stopping     = early_stop,  
+          patience           = pat,
+          min_epochs         = min_ep,
+          eval_every         = eval_every,
+          tol                = tol,
+          lr_decay_on_plateau= lr_plateau,
+          lr_decay_factor    = lr_factor,
+          lr_min             = lr_minimum,
+          tb_logdir          = if (nzchar(tb_path)) tb_path else NULL
         )
+        
         
         betas_result(betas)
         regression_status("<span style='color: #1E90FF; font-style: italic;'>Regression done.</span>")
@@ -326,7 +355,7 @@ server <- function(input, output, session) {
   
   
   observeEvent(input$choose_tb_dir, {
-    # Native folder dialog (no shinyFiles)
+    # Native folder dialog 
     path <- tryCatch({
       if (.Platform$OS.type == "windows") {
         utils::choose.dir(caption = "Select TensorBoard log directory")
@@ -349,7 +378,7 @@ server <- function(input, output, session) {
   observeEvent(input$open_tb, {
     req(nzchar(tb_dir()))
     tryCatch({
-      tensorflow::tensorboard(tb_dir())   # opens TB in browser
+      tensorflow::tensorboard(tb_dir())  
     }, error = function(e) {
       showNotification(paste("Failed to open TensorBoard:", e$message), type = "error")
     })
@@ -367,10 +396,34 @@ server <- function(input, output, session) {
   output$songbird_plotly <- renderPlotly({
     req(betas_result(), input$coef_name, input$ylim_min, input$ylim_max, input$pval_threshold)
     
-    df <- coef_df()
+    res <- betas_result()
+    df  <- coef_df() 
     
+    arr <- res$beta_array
+    j   <- match(input$coef_name, dimnames(arr)[[2]])
+    stopifnot(!is.na(j))
+    
+    A <- arr[, j, , drop = FALSE]
+    K <- dim(A)[1]; B <- dim(A)[3]
+    A <- array(A, dim = c(K, B))  
+    
+    qlo <- 0.025; qhi <- 0.975
+    lo  <- apply(A, 1, function(v) { v <- v[is.finite(v)]; if (length(v) >= 2) quantile(v, qlo, names = FALSE) else NA_real_ })
+    hi  <- apply(A, 1, function(v) { v <- v[is.finite(v)]; if (length(v) >= 2) quantile(v, qhi, names = FALSE) else NA_real_ })
+    
+    # align to df order via Feature
+    feats <- rownames(res$beta_mean)
+    lo_map <- setNames(lo, feats)
+    hi_map <- setNames(hi, feats)
+    df$ci_lo <- unname(lo_map[df$Feature])
+    df$ci_hi <- unname(hi_map[df$Feature])
+    
+    # error bar lengths
+    df$err_up <- pmax(0, df$ci_hi - df$beta_mean)
+    df$err_dn <- pmax(0, df$beta_mean - df$ci_lo)
+    
+    #split groups
     sig_flag <- is.finite(df$p_value) & (df$p_value <= input$pval_threshold)
-    
     hl_raw <- trimws(unlist(strsplit(input$highlight_otus, ",")))
     hl <- unique(hl_raw[hl_raw != ""])
     is_hl <- if (length(hl)) df$Feature %in% hl else rep(FALSE, nrow(df))
@@ -385,6 +438,8 @@ server <- function(input, output, session) {
         "OTU: ", d$Feature,
         "<br>Rank: ", d$rank,
         "<br>Beta mean: ", sprintf("%.4f", d$beta_mean),
+        "<br>CI: [", ifelse(is.finite(d$ci_lo), sprintf("%.4f", d$ci_lo), "NA"),
+        ", ", ifelse(is.finite(d$ci_hi), sprintf("%.4f", d$ci_hi), "NA"), "]",
         "<br>P-value: ", ifelse(is.finite(d$p_value), sprintf("%.4g", d$p_value), "NA")
       )
     }
@@ -398,10 +453,15 @@ server <- function(input, output, session) {
         type = "scatter", mode = "markers",
         text = hover(df_nsig), hoverinfo = "text",
         name = paste0("p > ", format(input$pval_threshold)),
-        marker = list(size = 6, opacity = 0.35)
+        marker = list(size = 6, opacity = 0.35),
+        error_y = list(type = "data",
+                       array = df_nsig$err_up,
+                       arrayminus = df_nsig$err_dn,
+                       thickness = 1.2,
+                       width = 0)
       )
     }
-
+    
     if (nrow(df_sig)) {
       p <- add_trace(
         p, data = df_sig,
@@ -409,7 +469,12 @@ server <- function(input, output, session) {
         type = "scatter", mode = "markers",
         text = hover(df_sig), hoverinfo = "text",
         name = paste0("p \u2264 ", format(input$pval_threshold)),
-        marker = list(size = 7)
+        marker = list(size = 7),
+        error_y = list(type = "data",
+                       array = df_sig$err_up,
+                       arrayminus = df_sig$err_dn,
+                       thickness = 1.2,
+                       width = 0)
       )
     }
     
@@ -420,11 +485,12 @@ server <- function(input, output, session) {
         type = "scatter", mode = "markers",
         text = hover(df_hl), hoverinfo = "text",
         name = "Highlighted OTUs",
-        marker = list(
-          size = 11,
-          symbol = "diamond-open",
-          line = list(width = 1.5)
-        )
+        marker = list(size = 11, symbol = "diamond-open", line = list(width = 1.5)),
+        error_y = list(type = "data",
+                       array = df_hl$err_up,
+                       arrayminus = df_hl$err_dn,
+                       thickness = 1.5,
+                       width = 0)
       )
     }
     
@@ -436,6 +502,7 @@ server <- function(input, output, session) {
         legend = list(orientation = "h", y = -0.2)
       )
   })
+  
   
   
   
@@ -503,7 +570,8 @@ server <- function(input, output, session) {
     data_to_show <- switch(input$csv_type,
                            beta_mean = result$beta_mean,
                            beta_sd   = result$beta_sd,
-                           beta_pval = result$beta_pval)
+                           beta_pval = result$beta_pval,
+                           beta_fdr  = result$beta_fdr)
     df <- data.frame(Feature = rownames(data_to_show),
                      data_to_show, check.names = FALSE)
     rownames(df) <- NULL
@@ -661,7 +729,7 @@ server <- function(input, output, session) {
   
   #downloads
   output$download_rds <- downloadHandler(
-    filename = function() { "songbird_result.rds" },
+    filename = function() { "regression_result.rds" },
     content  = function(file) { saveRDS(betas_result(), file) }
   )
   
@@ -672,7 +740,8 @@ server <- function(input, output, session) {
       data_to_write <- switch(input$csv_type,
                               beta_mean = result$beta_mean,
                               beta_sd   = result$beta_sd,
-                              beta_pval = result$beta_pval
+                              beta_pval = result$beta_pval,
+                              beta_fdr  = result$beta_fdr
       )
       write.csv(data_to_write, file)
     }
