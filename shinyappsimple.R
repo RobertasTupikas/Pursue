@@ -113,10 +113,7 @@ ui <- fluidPage(
               downloadButton("download_csv_dynamic", "Download CSV"),
               div(style="display:inline-block; width:8px"),
               downloadButton("download_rds", "Download whole RDS"),
-              div(style="margin-top:12px"),
-              actionButton("add_to_num", "Add to Numerator", class = "btn-primary"),
-              div(style="display:inline-block; width:8px"),
-              actionButton("add_to_den", "Add to Denominator")
+              div(style="margin-top:12px")
             )
           )
         )
@@ -746,4 +743,5 @@ shinyApp(ui = ui, server = server)
 
 #TODO - move plot function to a separate file
 #     - maybe add live epoch diagnostics for serial mode
+
 
