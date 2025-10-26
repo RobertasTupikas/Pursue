@@ -74,7 +74,7 @@ ui <- fluidPage(
                                 textInput("highlight_otus", "Highlight OTUs (comma-separated)", value = ""),
                                 numericInput("ylim_min", "Y-axis Min", value = -3),
                                 numericInput("ylim_max", "Y-axis Max", value = 3),
-                                numericInput("pval_threshold", "P-value Threshold", value = 0.05),
+                                numericInput("pval_threshold", "q-value Threshold", value = 0.05),
                                 actionButton("run_plot", "Generate Plot")
                        )
                      )
@@ -415,7 +415,7 @@ server <- function(input, output, session) {
     df$err_dn <- pmax(0, df$beta_mean - df$ci_lo)
     
     #split groups
-    sig_flag <- is.finite(df$p_value) & (df$p_value <= input$pval_threshold)
+    sig_flag <- is.finite(df$q_value) & (df$q_value <= input$pval_threshold)
     hl_raw <- trimws(unlist(strsplit(input$highlight_otus, ",")))
     hl <- unique(hl_raw[hl_raw != ""])
     is_hl <- if (length(hl)) df$Feature %in% hl else rep(FALSE, nrow(df))
@@ -432,7 +432,7 @@ server <- function(input, output, session) {
         "<br>Beta mean: ", sprintf("%.4f", d$beta_mean),
         "<br>CI: [", ifelse(is.finite(d$ci_lo), sprintf("%.4f", d$ci_lo), "NA"),
         ", ", ifelse(is.finite(d$ci_hi), sprintf("%.4f", d$ci_hi), "NA"), "]",
-        "<br>P-value: ", ifelse(is.finite(d$p_value), sprintf("%.4g", d$p_value), "NA")
+        "<br>Q-value: ", ifelse(is.finite(d$q_value), sprintf("%.4g", d$q_value), "NA")
       )
     }
     
@@ -444,7 +444,7 @@ server <- function(input, output, session) {
         x = ~rank, y = ~beta_mean,
         type = "scatter", mode = "markers",
         text = hover(df_nsig), hoverinfo = "text",
-        name = paste0("p > ", format(input$pval_threshold)),
+        name = paste0("q > ", format(input$pval_threshold)),
         marker = list(size = 6, opacity = 0.35),
         error_y = list(type = "data",
                        array = df_nsig$err_up,
@@ -460,7 +460,7 @@ server <- function(input, output, session) {
         x = ~rank, y = ~beta_mean,
         type = "scatter", mode = "markers",
         text = hover(df_sig), hoverinfo = "text",
-        name = paste0("p \u2264 ", format(input$pval_threshold)),
+        name = paste0("q \u2264 ", format(input$pval_threshold)),
         marker = list(size = 7),
         error_y = list(type = "data",
                        array = df_sig$err_up,
@@ -524,13 +524,13 @@ server <- function(input, output, session) {
     req(betas_result(), input$coef_name)
     res <- betas_result()
     bm  <- res$beta_mean[, input$coef_name, drop = TRUE]
-    pv  <- res$beta_pval[, input$coef_name, drop = TRUE]
+    qv  <- res$beta_fdr[, input$coef_name, drop = TRUE]
     
     ord <- order(bm, decreasing = FALSE)
     data.frame(
       Feature   = rownames(res$beta_mean)[ord],
       beta_mean = as.numeric(bm[ord]),
-      p_value   = as.numeric(pv[ord]),
+      q_value   = as.numeric(qv[ord]),
       rank      = seq_along(ord),
       stringsAsFactors = FALSE
     )
@@ -746,3 +746,4 @@ shinyApp(ui = ui, server = server)
 
 #TODO - move plot function to a separate file
 #     - maybe add live epoch diagnostics for serial mode
+
