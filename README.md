@@ -142,7 +142,7 @@ Leave other parameters at default values.
 
 ---
 
-### **Parameter: differential_prior**
+### **Differential_prior**
 
 Defines the standard deviation of the Normal prior on regression coefficients (β). It controls how freely differential effects can vary by determining the strength of regularization (shrinkage) toward zero.  
 
@@ -158,7 +158,7 @@ The Songbird reference implementation uses a comparable scale, typically with σ
 
 ---
 
-### Parameter: clipnorm
+### **Clipnorm**
 
 Specifies the maximum global L2 norm for gradient clipping during training. Prevents the optimizer from taking excessively large steps by scaling gradients that exceed this value.  
 
@@ -172,7 +172,7 @@ Smaller values (e.g., 1–5) enforce stricter stability but may slow convergence
 
 ---
 
-### Parameter: re_lambda
+### **Random-effect λ**
 
 Regularization coefficient for random-effect terms, controlling their variance penalty. Applies L2 shrinkage to random offsets such as batches or subjects.  
 
@@ -186,7 +186,7 @@ Higher values (e.g., 1e-2) force random effects closer to zero, simplifying the 
 
 ---
 
-### Parameter: learning_rate
+### **Learning rate**
  
 Step size for the Adam optimizer, determining how far weights move in response to each gradient update.  
 
@@ -200,7 +200,7 @@ Small learning rates (1e-4–1e-3) ensure stable convergence; large ones (≥1e-
 
 ---
 
-### Parameter: batch_size
+### **Batch size**
 
 Number of samples processed per training step before gradient averaging. Controls the stochasticity of gradient descent.  
 
@@ -214,7 +214,7 @@ Smaller batches (5–10) introduce noise that acts as regularization, helping ge
 
 ---
 
-### Parameter: num_test_samples
+### **Number of test samples**
 
 Number of subsampled test replicates evaluated per training iteration to assess generalization.  
 
@@ -228,13 +228,13 @@ Higher values (10–20) yield more stable validation metrics but increase runtim
 
 ---
 
-### Parameter: seed
+### **Seed**
 
 Random initialization seed ensuring deterministic model behavior across runs.  
 
 ---
 
-### Parameter: parallel_mode
+### **Parallel mode**
 
 Defines the parallel processing backend for resampling operations (`"no"`, `"multicore"`, or `"snow"`).  
 
@@ -245,7 +245,7 @@ Defines the parallel processing backend for resampling operations (`"no"`, `"mul
 
 ---
 
-### Parameter: n_cores
+### **Number of cores**
 
 Number of CPU cores allocated for parallel execution during resampling. Speeds up runtime.
 
@@ -258,7 +258,7 @@ Match to the number of available physical cores minus one to avoid saturation. S
 
 ---
 
-### Parameter: epochs
+### **Epochs**
 
 Maximum number of epochs (complete training passes) per resample iteration.  
 
@@ -271,7 +271,7 @@ Acts as an upper limit for training; used in conjunction with early stopping. If
 
 ---
 
-### Parameter: n_boot
+### **Number of bootstraps**
 
 Number of bootstrap resamples used to estimate uncertainty (confidence intervals) around coefficient estimates.  
 
@@ -285,7 +285,7 @@ Increasing this number improves the precision of the estimated variability but s
 
 ---
 
-### Parameter: n_perms
+### **Number of permutations**
 
 Number of permutation replicates for constructing empirical null distributions used in p-value estimation.  
 
@@ -299,7 +299,7 @@ Low numbers give coarse p-value resolution (minimum p ≈ 1/(n_perms + 1)), whil
 
 ---
 
-### Parameter: early_stopping
+### **Early stopping**
 
 Toggle controlling whether the training halts automatically when validation loss ceases to improve.  
 
@@ -312,7 +312,7 @@ Helps prevent overfitting and shortens training time. If disabled, model trains 
 
 ---
 
-### Parameter: patience
+### **Patience**
 
 Number of consecutive evaluation intervals (`eval_every`) without improvement before early stopping triggers.  
 
@@ -326,7 +326,7 @@ Lower values make early stopping respond quickly to stagnation; higher values gi
 
 ---
 
-### Parameter: min_epochs
+### **Minimum epochs**
 
 Minimum number of epochs required before early stopping can activate. Ensures sufficient training time before evaluation begins.  
 
@@ -340,7 +340,7 @@ Prevents premature stopping during early fluctuations in validation loss.
 
 ---
 
-### Parameter: eval_every
+### **Evaluate every N steps**
 
 Defines how frequently (in training steps) validation loss is checked for improvement.  
 
@@ -354,7 +354,7 @@ Smaller values give more granular feedback but slightly increase overhead; large
 
 ---
 
-### Parameter: tol
+### **Tolerance**
 
 Minimum relative improvement in validation loss to be considered progress during early stopping.  
 
@@ -368,7 +368,7 @@ Lower `tol` values make convergence stricter and prolong training; higher values
 
 ---
 
-### Parameter: lr_plateau
+### **Learning rate plateau**
 
 Switch to enable automatic learning-rate decay when validation loss stagnates.  
 
@@ -381,7 +381,7 @@ When enabled, helps optimization escape shallow minima by reducing step size. Ke
 
 ---
 
-### Parameter: lr_decay_factor
+### **Learning rate decay factor**
 
 Multiplicative factor applied to the learning rate when plateau detection triggers.  
 
@@ -395,7 +395,7 @@ Controls how aggressively the learning rate drops. Too small (<0.3) may stall tr
 
 ---
 
-### Parameter: lr_min
+### **Learning rate minimum**
 
 Minimum allowable learning rate after decays. Prevents the optimizer from becoming effectively frozen.  
 
