@@ -30,7 +30,7 @@ Connect through your browser at
 
 ```r
 # Install Pursue core packages
-remotes::install_github("RobertasTupikas/songbird-for-R")  # songbirdR
+remotes::install_github("RobertasTupikas/Pursue")
 ```
 
 **Conda / Python environment requirements:**
