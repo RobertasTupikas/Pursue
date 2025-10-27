@@ -141,7 +141,9 @@ Permutations  = 2000
 Leave other parameters at default values.
 
 Most other parameters you will have to tune with `TensorBoard`. At the bottom of the **Model Settings** tab, there is an option to **Choose TensorBoard log directory**. This is where the model training logs will be stored, and subsequently accessed with the **Open TensorBoard** button below (note that it will open the tensorboard log directory that you have chosen with the first button, so you may choose a directory that you have stored from previous runs as well). 
+
 **TensorBoard logging will only happen if Parralel mode is set to "no", so your first test runs will have to run serially to obtain model diagnostics**
+
 We highly suggest you check out [the TensorBoard tutorial](https://www.tensorflow.org/tensorboard/get_started) if you wish to fine-tune your parameters.
 
 ---
