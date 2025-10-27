@@ -93,7 +93,7 @@ library(plotly)
 
 ### **4 — Configure training parameters**
 - Scroll to the **Model Settings** section to view and edit parameter values.  
-- Default settings are suitable for a first run; see the **Parameters Tutorial** below for detailed explanations.
+- Default settings are suitable for a first test run; see the **Parameters Tutorial** below for detailed explanations and a **Quick start** tutorial.
 
 ---
 
@@ -134,7 +134,7 @@ Use **Download CSV** to export the active table or **Download RDS** to save all 
 ### **Quick start**
 For a high quality run, and most thereafter:
 ```r
-Epochs        = 10000
+Epochs        = 15000
 Bootstraps    = 200
 Permutations  = 2000
 ```
