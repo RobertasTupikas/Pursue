@@ -132,7 +132,7 @@ Use **Download CSV** to export the active table or **Download RDS** to save all 
 ## Parameters Tutorial
 
 ### **Quick start**
-For a high-quality first run, and most thereafter:
+For a high quality run, and most thereafter:
 ```r
 Epochs        = 10000
 Bootstraps    = 200
