@@ -100,7 +100,7 @@ library(plotly)
 ### **5 — Run regression**
 - Click **Run Regression**.  
 - A progress message will appear (“Running…” then “Done.”).  
-- Results become accessible in the **Results Table** (top-right panel).
+- Results become accessible in the **Results Table** (right panel).
 
 | Output matrix | Description |
 |----------------|-------------|
