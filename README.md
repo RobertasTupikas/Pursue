@@ -88,6 +88,7 @@ library(plotly)
 ### **3 — Select model variables**
 - In **Model Formula Columns**, choose one or more metadata variables.  
 - For categorical variables, select their **Reference level** in the generated dropdowns.
+- If your data has technical/sampling batches (location, subject, etc.), you may include those in the **Random effects** dropdown.
 
 ---
 
